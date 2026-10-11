@@ -5,7 +5,7 @@ Plugin lifecycle manager.
 from pathlib import Path
 
 from qgis.PyQt.QtCore import Qt
-from qgis.PyQt import QIcon
+from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction
 
 from .ui.dock_widget import BiomassDockWidget
