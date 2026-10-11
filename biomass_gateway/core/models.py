@@ -51,6 +51,7 @@ class GcpPoint:
     """Ground Control Point (GCP) extracted from the product
     """
     id: str
+    pixel: float
     line: float
     x: float # longitude
     y: float #  latitude
