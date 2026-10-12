@@ -4,11 +4,14 @@ Plugin lifecycle manager.
 
 from pathlib import Path
 
+from qgis.core import QgsApplication
+
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction
 
 from .ui.dock_widget import BiomassDockWidget
+from .processing.provider import BiomassProcessingProvider
 
 
 class BiomassGatewayPlugin:
@@ -21,11 +24,24 @@ class BiomassGatewayPlugin:
         self.plugin_dir = Path(__file__).resolve().parent
         self.dock_widget: BiomassDockWidget | None = None
         self.action: QAction | None = None
+        self.provider: BiomassProcessingProvider | None = None
+
+
+    def initProcessing(self):
+        """
+        Register the processing provider in QGIS
+        """
+        self.provider = BiomassProcessingProvider()
+        QgsApplication.processingRegistry().addProvider(self.provider)
 
 
     def initGui(self):
-        """Called by QGIS when plugin is loaded into GUI
         """
+        Called by QGIS when plugin is loaded into GUI
+        """
+        if not self.provider:
+            self.initProcessing()
+
         icon_path = self.plugin_dir / 'icon.png'
         icon = QIcon(str(icon_path)) if icon_path.is_file() else QIcon()
 
@@ -34,6 +50,7 @@ class BiomassGatewayPlugin:
         self.action.triggered.connect(self.run)
 
         self.iface.addPluginToMenu("&Biomass Gateway", self.action)
+        self.iface.addToolBarIcon(self.action)
 
 
     def unload(self):
