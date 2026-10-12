@@ -1,4 +1,4 @@
-![biomass.png](../Downloads/biomass.png)
+![biomass.png](biomass.png)
 # BIOMASS Gateway - QGIS plugin
 This repository contains the code of a QGIS plugin for discovering, inspecting and processing ESA BIOMASS satellite data.
 This project was initialized during the ESA Biomass MAAP hackathon 2026 hosted at ESOC.
@@ -12,7 +12,8 @@ products directly inside.
 
 ---
 ### Key Capabilities
-Work in progress
+Work in progress, but currently:
+* Load a product folder stored locally, visualize its details, warp raster using TPS and load on canvas an RGB false color
 
 ---
 ### Installation for users
