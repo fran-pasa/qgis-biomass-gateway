@@ -1,5 +1,4 @@
 # Python
-__pycache__/
 *.py[cod]
 *$py.class
 *.so
@@ -56,3 +55,5 @@ data/
 
 # other stuff
 *.pdf
+
+__pycache__/
