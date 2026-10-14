@@ -3,8 +3,8 @@ Main dockwidget panel for the ESA BIOMASS Gateway plugin.
 
 Provides three tabs:
 1. Local Product Browser - Inspect and georeference local BIOMASS directory products.
-2. MAAP search - Discover remote BIOMASS collections via ESA MAAP STAC API and stream
-   protected rasters directly to QGIS canvas via /vsicurl/.
+2. MAAP search - Discover remote BIOMASS collections via ESA MAAP STAC API and inspect
+   product metadata and footprints.
 3. Settings - Configure and test ESA MAAP Keycloak authentication credentials.
 """
 
@@ -19,7 +19,6 @@ from qgis.core import (
     QgsCoordinateTransform,
     QgsJsonUtils,
     QgsProject,
-    QgsRasterLayer,
 )
 from qgis.gui import QgsDockWidget, QgsFileWidget, QgsRubberBand
 from qgis.PyQt.QtCore import QDate, Qt
@@ -325,10 +324,9 @@ class BiomassDockWidget(QgsDockWidget):
         self.btn_next_page.clicked.connect(self._next_page)
         action_layout.addWidget(self.btn_next_page)
 
-        self.btn_load_stac_layer = QPushButton("Stream to canvas")
+        self.btn_load_stac_layer = QPushButton("Stream to canvas (soon available)")
         self.btn_load_stac_layer.setEnabled(False)
         self.btn_load_stac_layer.setStyleSheet("font-weight: bold;")
-        self.btn_load_stac_layer.clicked.connect(self._stream_stac_raster_to_canvas)
         action_layout.addWidget(self.btn_load_stac_layer)
 
         layout.addLayout(action_layout)
@@ -495,17 +493,16 @@ class BiomassDockWidget(QgsDockWidget):
         item = self.search_results[row]
         self.selected_stac_item = item
 
-        # enable streaming button if geotiff asset is present
-        self.btn_load_stac_layer.setEnabled(bool(item.measurement_tiff_url))
+        # streaming to canvas is disabled (soon available)
+        self.btn_load_stac_layer.setEnabled(False)
 
         # show metadata summary
+        # TODO: add more useful metadata
         summary = [
             f"<b>Product ID:</b> {item.id}",
             f"<b>Collection:</b> {item.collection} | <b>Type:</b> {item.product_type}",
             f"<b>Acquisition:</b> {item.sensing_start}",
             f"<b>Polarisations:</b> {', '.join(item.polarizations)} | <b>Orbit:</b> {item.orbit or 'N/A'}",
-            f"<b>Measurement TIFF:</b> {'Available' if item.measurement_tiff_url else 'None'}",
-            f"<b>Quicklook Preview:</b> {'Available' if item.quicklook_url else 'None'}",
         ]
         self.txt_stac_details.setHtml("<br>".join(summary))
 
@@ -541,82 +538,6 @@ class BiomassDockWidget(QgsDockWidget):
                 self.footprint_rubber_band.setToGeometry(geom, None)
         except Exception as err:
             logger.warning(f"Could not render footprint on canvas: {err}")
-
-    def _stream_stac_raster_to_canvas(self) -> None:
-        """Helper to stream the selected BIOMASS GeoTIFF directly via /vsicurl/
-        """
-        if not self.selected_stac_item or not self.selected_stac_item.measurement_tiff_url:
-            QMessageBox.warning(
-                self,
-                "No Measurement raster",
-                "This product does not have a streamable GeoTIFF asset.",
-            )
-            return
-
-        # verify and refresh access token
-        access_token = self.auth_manager.get_access_token()
-        if not access_token:
-            resp = QMessageBox.question(
-                self,
-                "Authentication required",
-                "ESA MAAP requires an authenticated Bearer token to stream data rasters.\n\n"
-                "Would you like to switch to the Settings tab to configure your token?",
-                QMessageBox.Yes | QMessageBox.No,
-            )
-            if resp == QMessageBox.Yes:
-                # switch to settings tab
-                self.tabs.setCurrentIndex(2)
-            return
-
-        # inject new token to gdal
-        self.auth_manager.apply_gdal_auth(access_token)
-
-        # build /vsicurl/ path
-        tiff_url = self.selected_stac_item.measurement_tiff_url
-        vsi_uri = f"/vsicurl/{tiff_url}"
-        layer_name = f"{self.selected_stac_item.collection}_{self.selected_stac_item.id[:20]}"
-
-        # stream layer into QGIS
-        self.btn_load_stac_layer.setEnabled(False)
-        self.btn_load_stac_layer.setText("Streaming...")
-        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-        QApplication.processEvents()
-
-        try:
-            layer = QgsRasterLayer(vsi_uri, layer_name, "gdal")
-            if not layer.isValid():
-                error_msg = layer.error().message() if hasattr(layer, "error") else "Unknown GDAL error"
-                QMessageBox.critical(
-                    self,
-                    "Streaming Error",
-                    f"Failed to open remote raster via /vsicurl/:\n\n{error_msg}\n\n"
-                    "Please check your token permissions or network connection.",
-                )
-                return
-
-            # add to QGIS Layer tree
-            QgsProject.instance().addMapLayer(layer)
-            log_qgis_info(f"Streamed remote BIOMASS layer: {layer_name}")
-
-            # zoom canvas to the new layer extent
-            self.iface.mapCanvas().setExtent(layer.extent())
-            self.iface.mapCanvas().refresh()
-
-            self.txt_stac_details.append(
-                f"<br><b style='color: #2e7d32;'>✓ Streamed '{layer_name}' to canvas via /vsicurl/.</b>"
-            )
-
-        except Exception as err:
-            QMessageBox.critical(
-                self,
-                "Streaming Error",
-                f"Unexpected error while streaming:\n{err}",
-            )
-
-        finally:
-            QApplication.restoreOverrideCursor()
-            self.btn_load_stac_layer.setEnabled(True)
-            self.btn_load_stac_layer.setText("Stream to Canvas")
 
 
     def _create_settings_tab(self) -> QWidget:
