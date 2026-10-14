@@ -98,7 +98,6 @@ class MAAPAuthManager:
         self.settings.remove(SETTINGS_TOKEN_KEY)
         self._access_token = None
         self._token_expiry_epoch = 0.0
-        self.clear_gdal_auth()
         log_qgis_info("MAAP authentication token cleared.")
         logger.info("Cleared MAAP authentication token.")
 
@@ -120,8 +119,6 @@ class MAAPAuthManager:
         self._access_token = access_token
         self._token_expiry_epoch = time.time() + expires_in
 
-        # inject access token to gdal
-        self.apply_gdal_auth(access_token)
         return self._access_token
 
 
@@ -188,7 +185,6 @@ class MAAPAuthManager:
             # Store fresh access token and configure GDAL
             self._access_token = access_token
             self._token_expiry_epoch = time.time() + expires_in
-            self.apply_gdal_auth(access_token)
 
             return AuthValidationResult(
                 is_valid=True,
