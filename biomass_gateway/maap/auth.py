@@ -1,6 +1,6 @@
 """
 Authentication module to access data from MAAP STAC.
-Handles token management, OAuth2 offline token exchange, and GDAL /vsicurl/ configuration.
+Handles token management and OAuth2 offline token exchange.
 """
 
 import base64
@@ -10,7 +10,6 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from osgeo import gdal
 from qgis.core import QgsSettings
 
 from ..core.logger import get_logger, log_qgis_info
@@ -157,24 +156,6 @@ class MAAPAuthManager:
             username = claims.get("name") or claims.get("preferred_username") or claims.get("email") or "User"
             return access_token, expires_in, username
 
-
-    def apply_gdal_auth(self, access_token: str | None = None) -> None:
-        """Configure GDAL network env options for /vsicurl/ remote streaming
-        """
-        token = access_token or self._access_token
-        if token:
-            # Set global bearer auth header for GDAL VSI curl requests
-            gdal.SetConfigOption("GDAL_HTTP_HEADERS", f"Authorization: Bearer {token}")
-
-            # MAAP server rejects or mishandles HEAD requests on data endpoints
-            gdal.SetConfigOption("CPL_VSIL_CURL_USE_HEAD", "NO")
-            logger.debug("Configured GDAL_HTTP_HEADERS with Bearer access token.")
-
-
-    def clear_gdal_auth(self) -> None:
-        """Reset GDAL HTTP configuration."""
-        gdal.SetConfigOption("GDAL_HTTP_HEADERS", None)
-        logger.debug("Cleared GDAL_HTTP_HEADERS.")
 
 
     def get_headers(self) -> dict[str, str]:
