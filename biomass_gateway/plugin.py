@@ -56,6 +56,8 @@ class BiomassGatewayPlugin:
     def unload(self):
         """Called by QGIS when plugin is disabled or reloaded
         """
+        if self.provider:
+            QgsApplication.processingRegistry().removeProvider(self.provider)
         if self.action:
             self.iface.removePluginMenu("&Biomass Gateway", self.action)
             self.iface.removeToolBarIcon(self.action)
