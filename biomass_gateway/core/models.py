@@ -11,6 +11,7 @@ from pathlib import Path
 class WarpMethod(str, Enum):
     """Supported GDAL georeferencing methods.
     """
+    GEOLOCATION_ARRAY = 'geoloc'
     TPS = "tps"
     POLYNOMIAL_1 = "order_1"
     POLYNOMIAL_2 = "order_2"
@@ -71,7 +72,7 @@ class BiomassBand:
 class WarpConfig:
     """Configuration options for GDAL warping
     """
-    method: WarpMethod = WarpMethod.TPS
+    method: WarpMethod = WarpMethod.GEOLOCATION_ARRAY
     src_crs: str = "EPSG:4979"
     dst_crs: str = "EPSG:4326"
     nodata: float = -9999.0
@@ -86,8 +87,8 @@ class BiomassProduct:
     product_id: str
     folder_path: Path
     level: ProductLevel
-    swath: str = "S2"
-    product_type: str = "SCS__1S"
+    swath: str = "N/A"
+    product_type: str = "UNKNOWN"
     track: str | None = None  # e.g. "T035"
     frame: str | None = None  # e.g. "F306"
     sensing_start: datetime | None = None
@@ -99,6 +100,9 @@ class BiomassProduct:
     annotation_file: Path | None = None
     polarisations: list[str] = field(default_factory=lambda: ["HH", "HV", "VH", "VV"])
     gcps: list[GcpPoint] = field(default_factory=list)
+    lut_file: Path | None = None
+    lut_grid_shape: tuple[int, int] | None = None
+
 
     @property
     def has_measurements(self) -> bool:
@@ -106,14 +110,37 @@ class BiomassProduct:
         """
         return self.abs_file is not None or self.phase_file is not None or self.vrt_file is not None
 
+
     @property
     def is_l1a(self) -> bool:
         """True if Single-look Complex Slant product (has both abs and phase)
         """
         return self.level == ProductLevel.L1A
 
+
     @property
     def is_l1b(self) -> bool:
         """True if Detected Ground Multi-look product (amplitude only)
         """
         return self.level == ProductLevel.L1B
+
+
+    @property
+    def is_l1c(self) -> bool:
+        """True if co-registered slant-range Complex product
+        """
+        return self.level == ProductLevel.L1C
+
+
+    @property
+    def is_geocoded(self) -> bool:
+        """True if Level 2A or Level 2B product (already map-projected)
+        """
+        return self.level in (ProductLevel.L2A, ProductLevel.L2B)
+
+
+    @property
+    def has_lut(self) -> bool:
+        """True if a valid NetCDF LUT file is available
+        """
+        return self.lut_file is not None and self.lut_file.is_file()

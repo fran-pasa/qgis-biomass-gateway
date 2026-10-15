@@ -45,7 +45,7 @@ from qgis.PyQt.QtWidgets import (
 
 from ..core.exceptions import ProductReadError
 from ..core.logger import get_logger, log_qgis_info, log_qgis_warning
-from ..core.models import BiomassProduct
+from ..core.models import BiomassProduct, WarpConfig, WarpMethod
 from ..maap.auth import AuthValidationResult, MAAPAuthManager
 from ..maap.client import (
     BIOMASS_COLLECTIONS,
@@ -127,6 +127,19 @@ class BiomassDockWidget(QgsDockWidget):
         self.btn_inspect.clicked.connect(self._inspect_current_folder)
         btn_layout.addWidget(self.btn_inspect)
 
+        # resampling method selector
+        resample_layout = QHBoxLayout()
+        resample_layout.addWidget(QLabel("<b>Resampling method:</b>"))
+        self.cmb_resample = QComboBox()
+        self.cmb_resample.addItems([
+            "Bilinear",
+            "Nearest Neighbour",
+            "Cubic"
+        ])
+        self.cmb_resample.setCurrentIndex(0)
+        resample_layout.addWidget(self.cmb_resample)
+        layout.addLayout(resample_layout)
+
         self.btn_load_layer = QPushButton("Load layer on canvas")
         self.btn_load_layer.setEnabled(False)
         self.btn_load_layer.clicked.connect(self._load_layer_on_canvas)
@@ -171,6 +184,15 @@ class BiomassDockWidget(QgsDockWidget):
             self.current_product = read_biomass_product(folder_path)
             p = self.current_product
 
+            if p.is_geocoded:
+                lut_status = "Not required (product is already map-projected)"
+            elif p.has_lut and p.lut_grid_shape:
+                lut_status = f"Found ({p.lut_grid_shape[0]} × {p.lut_grid_shape[1]} points)"
+            else:
+                lut_status = "Not found (using GCP/TPS fallback)"
+
+            meas_label = "Amplitude" if not p.is_geocoded else "Measurement"
+
             summary = [
                 f"<b>Product ID:</b> {p.product_id}",
                 f"<b>Level:</b> {p.level.value} ({p.product_type})",
@@ -179,9 +201,10 @@ class BiomassDockWidget(QgsDockWidget):
                 f"<b>Phase:</b> {p.mission_phase or 'N/A'}",
                 f"<b>Sensing Start:</b> {p.sensing_start or 'N/A'}",
                 f"<b>Sensing Stop:</b> {p.sensing_stop or 'N/A'}",
+                f"<b>NetCDF Geolocation LUT:</b> {lut_status}",
                 f"<b>Polarisations:</b> {', '.join(p.polarisations)}",
                 f"<b>GCP Tie-Points:</b> {len(p.gcps)} points found",
-                f"<b>Amplitude File:</b> {'Found' if p.abs_file else 'Missing'}",
+                f"<b>{meas_label} File:</b> {'Found' if p.abs_file else 'Missing'}",
                 f"<b>Phase File:</b> {'Found' if p.phase_file else 'Missing'}",
                 f"<b>VRT File:</b> {'Found' if p.vrt_file else 'Missing'}",
             ]
@@ -200,12 +223,45 @@ class BiomassDockWidget(QgsDockWidget):
             return
 
         self.btn_load_layer.setEnabled(False)
-        self.btn_load_layer.setText("Warping & Loading...")
+        self.btn_inspect.setEnabled(False)
+        self.cmb_resample.setEnabled(False)
+        if self.current_product.is_geocoded:
+            self.btn_load_layer.setText("Loading...")
+        else:
+            self.btn_load_layer.setText("Warping (0%)...")
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         QApplication.processEvents()
 
+        def update_progress(fraction: float, message: str = ""):
+            try:
+                pct = int(fraction * 100)
+                if pct < 80:
+                    self.btn_load_layer.setText(f"Warping ({pct}%)...")
+                else:
+                    self.btn_load_layer.setText(f"Building overviews ({pct}%)...")
+                QApplication.processEvents()
+            except Exception:
+                pass
+
         try:
-            layers = load_biomass_product(self.current_product, iface=self.iface)
+            resample_text = self.cmb_resample.currentText().lower()
+            if "nearest" in resample_text:
+                resample_alg = "nearest"
+            elif "cubic" in resample_text:
+                resample_alg = "cubic"
+            else:
+                resample_alg = "bilinear"
+
+            warp_config = WarpConfig(
+                method=WarpMethod.GEOLOCATION_ARRAY,
+                resample_alg=resample_alg
+            )
+            layers = load_biomass_product(
+                self.current_product,
+                iface=self.iface,
+                config=warp_config,
+                progress_callback=update_progress,
+            )
             if layers:
                 self.txt_details.append(
                     f"<br><b style='color:green;'>✓ Successfully loaded on canvas ({len(layers)} layer(s)).</b>"
@@ -216,6 +272,8 @@ class BiomassDockWidget(QgsDockWidget):
         finally:
             QApplication.restoreOverrideCursor()
             self.btn_load_layer.setEnabled(True)
+            self.btn_inspect.setEnabled(True)
+            self.cmb_resample.setEnabled(True)
             self.btn_load_layer.setText("Load layer on canvas")
 
 
