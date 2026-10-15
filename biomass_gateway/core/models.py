@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
+from typing import Any
 
 
 class WarpMethod(str, Enum):
@@ -144,3 +145,36 @@ class BiomassProduct:
         """True if a valid NetCDF LUT file is available
         """
         return self.lut_file is not None and self.lut_file.is_file()
+
+
+@dataclass(frozen=True)
+class CalibrationConfig:
+    """Configuration options for radiometric calibration to Gamma Nought.
+    """
+    nodata: float = -9999.0
+    to_db: bool = True
+    build_overviews: bool = False
+    overview_resampling: str = "NEAREST"
+    overview_levels: tuple[int, ...] = (2, 5, 10, 20)
+    compress: str = "DEFLATE"
+
+
+@dataclass(frozen=True)
+class LutData:
+    """Radiometric LUT and coordinate axes extracted from NetCDF.
+    """
+    gamma_lut: Any  # np.ndarray
+    azimuth_axis: Any  # np.ndarray
+    range_axis: Any  # np.ndarray
+    reference_azimuth_time: str
+
+
+@dataclass(frozen=True)
+class SarImageGeometry:
+    """SAR image pixel timing coordinates in the LUT reference frame.
+    """
+    azimuth_axis: Any  # np.ndarray
+    range_time: Any  # np.ndarray (1D for slant range, 2D for ground range)
+    n_lines: int
+    n_samples: int
+    projection: str

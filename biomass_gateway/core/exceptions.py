@@ -31,3 +31,8 @@ class BioPalError(BiomassGatewayError):
 
 class MosaicError(BiomassGatewayError):
     """Raised when Mosaicking fails"""
+
+
+class CalibrationError(BiomassGatewayError):
+    """Raised when radiometric calibration to gamma nought fails."""
+
