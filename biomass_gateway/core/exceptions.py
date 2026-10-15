@@ -28,3 +28,11 @@ class MaapError(BiomassGatewayError):
 
 class BioPalError(BiomassGatewayError):
     """Raised when BioPAL runner or external conda environment fails."""
+
+
+class MosaicError(BiomassGatewayError):
+    """Raised when Mosaicking fails"""
+
+
+class CalibrationError(BiomassGatewayError):
+    """Raised when radiometric calibration to gamma nought fails."""

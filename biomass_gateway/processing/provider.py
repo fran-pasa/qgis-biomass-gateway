@@ -7,6 +7,7 @@ from pathlib import Path
 from qgis.core import QgsProcessingProvider
 from qgis.PyQt.QtGui import QIcon
 
+from .algorithms.calibrate_algorithm import CalibrateGamma0Algorithm
 from .algorithms.warp_algorithm import WarpBiomassAlgorithm
 
 
@@ -18,6 +19,7 @@ class BiomassProcessingProvider(QgsProcessingProvider):
     def loadAlgorithms(self):
         """Register all algorithms under this provider."""
         self.addAlgorithm(WarpBiomassAlgorithm())
+        self.addAlgorithm(CalibrateGamma0Algorithm())
 
         # contributors can register their algorithms here:
         # self.addAlgorithm(YourAlgorithm())
