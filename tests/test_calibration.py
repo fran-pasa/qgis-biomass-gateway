@@ -168,7 +168,7 @@ class TestCalibrationAlgorithm:
     def test_algorithm_metadata(self) -> None:
         alg = CalibrateGamma0Algorithm()
         assert alg.name() == "calibrate_gamma0"
-        assert alg.displayName() == "Calibrate to Gamma Nought (dB)"
+        assert alg.displayName() == "Calibrate to Gamma0 (dB)"
         assert alg.group() == "Calibration"
         assert alg.groupId() == "calibration"
         assert alg.createInstance() is not None

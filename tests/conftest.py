@@ -43,7 +43,38 @@ if "qgis" not in sys.modules:
             def clear(self) -> None:
                 FakeQgsSettings._store.clear()
 
+        class FakeQgsProcessingAlgorithm:
+            def __init__(self, *args: Any, **kwargs: Any) -> None:
+                self._parameters: list[Any] = []
+
+            def addParameter(self, param: Any) -> None:
+                self._parameters.append(param)
+
+            def parameterDefinitions(self) -> list[Any]:
+                return self._parameters
+
+        class FakeQgsProcessingParameter:
+            Folder = 1
+            File = 2
+
+            def __init__(self, name: str = "", description: str = "", *args: Any, **kwargs: Any) -> None:
+                self._name = name
+                self._description = description
+
+            def name(self) -> str:
+                return self._name
+
+        class FakeQgsProcessingException(Exception):
+            pass
+
         qgis_core_mock.QgsSettings = FakeQgsSettings
+        qgis_core_mock.QgsProcessingAlgorithm = FakeQgsProcessingAlgorithm
+        qgis_core_mock.QgsProcessingException = FakeQgsProcessingException
+        qgis_core_mock.QgsProcessingParameterFile = FakeQgsProcessingParameter
+        qgis_core_mock.QgsProcessingParameterRasterDestination = FakeQgsProcessingParameter
+        qgis_core_mock.QgsProcessingParameterRasterLayer = FakeQgsProcessingParameter
+        qgis_core_mock.QgsProcessingParameterEnum = FakeQgsProcessingParameter
+        qgis_core_mock.QgsProcessingParameterCrs = FakeQgsProcessingParameter
         qgis_mock.core = qgis_core_mock
 
         sys.modules["qgis"] = qgis_mock
@@ -53,6 +84,19 @@ if "qgis" not in sys.modules:
         sys.modules["qgis.PyQt.QtCore"] = MagicMock()
         sys.modules["qgis.PyQt.QtGui"] = MagicMock()
         sys.modules["qgis.PyQt.QtWidgets"] = MagicMock()
+
+if "osgeo" not in sys.modules:
+    try:
+        import osgeo  # noqa: F401
+    except ImportError:
+        osgeo_mock = MagicMock()
+        gdal_mock = MagicMock()
+        osr_mock = MagicMock()
+        osgeo_mock.gdal = gdal_mock
+        osgeo_mock.osr = osr_mock
+        sys.modules["osgeo"] = osgeo_mock
+        sys.modules["osgeo.gdal"] = gdal_mock
+        sys.modules["osgeo.osr"] = osr_mock
 
 
 @pytest.fixture(autouse=True)
