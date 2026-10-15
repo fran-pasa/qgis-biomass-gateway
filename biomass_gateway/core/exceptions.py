@@ -28,3 +28,6 @@ class MaapError(BiomassGatewayError):
 
 class BioPalError(BiomassGatewayError):
     """Raised when BioPAL runner or external conda environment fails."""
+
+class MosaicError(BiomassGatewayError):
+    """Raised when Mosaicking fails"""
