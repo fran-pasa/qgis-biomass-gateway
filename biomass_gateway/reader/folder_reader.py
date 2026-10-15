@@ -81,6 +81,24 @@ def _parse_gcps_from_vrt(vrt_path: Path) -> list[GcpPoint]:
         return []
 
 
+def _extract_lut_grid_shape(lut_path: Path) -> tuple[int, int] | None:
+    if not lut_path or not lut_path.is_file():
+        return None
+
+    try:
+        from osgeo import gdal
+
+        # open the latitude subdataset from the netcdf
+        subds_name = f'NETCDF:"{lut_path}":/geometry/latitude'
+        ds = gdal.Open(subds_name, gdal.GA_ReadOnly)
+        if ds is not None:
+            shape = (ds.RasterYSize, ds.RasterXSize)
+            ds = None
+            return shape
+    except Exception:
+        pass
+
+
 def read_biomass_product(folder_path: Path | str) -> BiomassProduct:
     """Parse a Biomass product folder and its annotation metadata.
 
@@ -97,6 +115,15 @@ def read_biomass_product(folder_path: Path | str) -> BiomassProduct:
     # locate annotation XML metadata file
     annotation_files = list(path.glob("annotation/*_annot.xml")) or list(path.glob("*_annot.xml"))
     annotation_file = annotation_files[0] if annotation_files else None
+
+    # locate NetCDF LUT file
+    lut_files = (
+        list(path.glob("annotation/*_lut.nc"))
+        or list(path.glob("*_lut.nc"))
+        or list(path.glob("annotation/*.nc"))
+    )
+    lut_file = lut_files[0] if lut_files else None
+    lut_grid_shape = _extract_lut_grid_shape(lut_file) if lut_file else None
 
     swath = "S2"
     product_type = "SCS"
@@ -184,4 +211,6 @@ def read_biomass_product(folder_path: Path | str) -> BiomassProduct:
         annotation_file=annotation_file,
         polarisations=polarisations,
         gcps=gcps,
+        lut_file=lut_file,
+        lut_grid_shape=lut_grid_shape,
     )
