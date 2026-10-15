@@ -9,6 +9,7 @@ from qgis.PyQt.QtGui import QIcon
 
 from .algorithms.calibrate_algorithm import CalibrateGamma0Algorithm
 from .algorithms.warp_algorithm import WarpBiomassAlgorithm
+from .algorithms.mosaic_algorithm import MosaicBiomassAlgorithm
 
 
 class BiomassProcessingProvider(QgsProcessingProvider):
@@ -20,6 +21,7 @@ class BiomassProcessingProvider(QgsProcessingProvider):
         """Register all algorithms under this provider."""
         self.addAlgorithm(WarpBiomassAlgorithm())
         self.addAlgorithm(CalibrateGamma0Algorithm())
+        self.addAlgorithm(MosaicBiomassAlgorithm())
 
         # contributors can register their algorithms here:
         # self.addAlgorithm(YourAlgorithm())
