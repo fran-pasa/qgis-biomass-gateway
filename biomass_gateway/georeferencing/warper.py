@@ -171,7 +171,7 @@ def build_geolocation_vrt(
         nodata_val = band_obj.GetNoDataValue()
         color_interp_id = band_obj.GetColorInterpretation()
         color_interp_name = gdal.GetColorInterpretationName(color_interp_id)
-        desc = band_names[b - 1] if band_names and b <= len(band_names) else f"Band {b}"
+        desc = (band_names[b - 1] if band_names and b <= len(band_names) else None) or band_obj.GetDescription() or f"Band {b}"
 
         nodata_tag = f"\n            <NoDataValue>{nodata_val}</NoDataValue>" if nodata_val is not None else ""
         color_tag = f"\n            <ColorInterp>{color_interp_name}</ColorInterp>" if color_interp_name and color_interp_name != "Undefined" else ""

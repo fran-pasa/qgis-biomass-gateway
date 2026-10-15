@@ -31,16 +31,20 @@ class BiomassGatewayPlugin:
         """
         Register the processing provider in QGIS
         """
+        registry = QgsApplication.processingRegistry()
+        existing = registry.providerById("biomass_gateway")
+        if existing:
+            registry.removeProvider(existing)
+
         self.provider = BiomassProcessingProvider()
-        QgsApplication.processingRegistry().addProvider(self.provider)
+        registry.addProvider(self.provider)
 
 
     def initGui(self):
         """
         Called by QGIS when plugin is loaded into GUI
         """
-        if not self.provider:
-            self.initProcessing()
+        self.initProcessing()
 
         icon_path = self.plugin_dir / 'icon.png'
         icon = QIcon(str(icon_path)) if icon_path.is_file() else QIcon()
@@ -65,6 +69,15 @@ class BiomassGatewayPlugin:
             self.iface.removeDockWidget(self.dock_widget)
             self.dock_widget.deleteLater()
             self.dock_widget = None
+
+        registry = QgsApplication.processingRegistry()
+        if self.provider:
+            registry.removeProvider(self.provider)
+            self.provider = None
+        else:
+            existing = registry.providerById("biomass_gateway")
+            if existing:
+                registry.removeProvider(existing)
 
 
     def run(self):
