@@ -87,8 +87,8 @@ class BiomassProduct:
     product_id: str
     folder_path: Path
     level: ProductLevel
-    swath: str = "S2"
-    product_type: str = "SCS__1S"
+    swath: str = "N/A"
+    product_type: str = "UNKNOWN"
     track: str | None = None  # e.g. "T035"
     frame: str | None = None  # e.g. "F306"
     sensing_start: datetime | None = None
@@ -123,6 +123,20 @@ class BiomassProduct:
         """True if Detected Ground Multi-look product (amplitude only)
         """
         return self.level == ProductLevel.L1B
+
+
+    @property
+    def is_l1c(self) -> bool:
+        """True if co-registered slant-range Complex product
+        """
+        return self.level == ProductLevel.L1C
+
+
+    @property
+    def is_geocoded(self) -> bool:
+        """True if Level 2A or Level 2B product (already map-projected)
+        """
+        return self.level in (ProductLevel.L2A, ProductLevel.L2B)
 
 
     @property
