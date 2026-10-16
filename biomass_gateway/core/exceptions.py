@@ -36,3 +36,7 @@ class MosaicError(BiomassGatewayError):
 class CalibrationError(BiomassGatewayError):
     """Raised when radiometric calibration to gamma nought fails."""
 
+
+class RfiMitigationError(BiomassGatewayError):
+    """Raised when RFI mitigation fails."""
+
