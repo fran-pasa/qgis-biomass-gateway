@@ -74,12 +74,18 @@ class BiomassGatewayPlugin:
 
         registry = QgsApplication.processingRegistry()
         if self.provider:
-            registry.removeProvider(self.provider)
+            try:
+                registry.removeProvider(self.provider)
+            except Exception:
+                pass
             self.provider = None
         else:
             existing = registry.providerById("biomass_gateway")
             if existing:
-                registry.removeProvider(existing)
+                try:
+                    registry.removeProvider(existing)
+                except Exception:
+                    pass
 
 
     def run(self):
