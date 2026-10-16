@@ -56,13 +56,22 @@ if "qgis" not in sys.modules:
         class FakeQgsProcessingParameter:
             Folder = 1
             File = 2
+            Integer = 1
+            Double = 2
 
             def __init__(self, name: str = "", description: str = "", *args: Any, **kwargs: Any) -> None:
                 self._name = name
                 self._description = description
+                self._flags = 0
 
             def name(self) -> str:
                 return self._name
+
+            def flags(self) -> int:
+                return self._flags
+
+            def setFlags(self, flags: int) -> None:
+                self._flags = flags
 
         class FakeQgsProcessingException(Exception):
             pass
@@ -75,7 +84,12 @@ if "qgis" not in sys.modules:
         qgis_core_mock.QgsProcessingParameterRasterLayer = FakeQgsProcessingParameter
         qgis_core_mock.QgsProcessingParameterEnum = FakeQgsProcessingParameter
         qgis_core_mock.QgsProcessingParameterCrs = FakeQgsProcessingParameter
+        qgis_core_mock.QgsProcessingParameterNumber = FakeQgsProcessingParameter
+        qgis_core_mock.QgsProcessingParameterBoolean = FakeQgsProcessingParameter
+        qgis_core_mock.QgsProcessingParameterDefinition = MagicMock()
+        qgis_core_mock.QgsProcessingParameterDefinition.FlagAdvanced = 1
         qgis_mock.core = qgis_core_mock
+
 
         sys.modules["qgis"] = qgis_mock
         sys.modules["qgis.core"] = qgis_core_mock
