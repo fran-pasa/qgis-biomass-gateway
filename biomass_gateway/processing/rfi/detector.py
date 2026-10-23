@@ -18,6 +18,8 @@ from scipy.sparse.linalg import svds
 
 from ...core.exceptions import RfiMitigationError
 from ...core.logger import get_logger
+from ...core.memory import DEFAULT_OVERVIEW_LEVELS, safe_close_dataset
+from ...core.memory import DEFAULT_OVERVIEW_LEVELS, safe_close_dataset
 
 logger = get_logger("rfi.detector")
 
@@ -339,6 +341,8 @@ def mitigate_rfi_slc(
 
         # Complex SLC reconstruction: abs * e^(j * phase)
         slc[b - 1] = amp_arr * np.exp(1j * pha_arr)
+        amp_band = None
+        pha_band = None
         del amp_arr, pha_arr
 
     q_records: list[int] = []
@@ -424,17 +428,17 @@ def mitigate_rfi_slc(
             )
         except Exception as stat_err:
             logger.debug("Failed to set statistics for amplitude band %d: %s", b, stat_err)
+        out_band = None
         del amp_data
 
     out_amp_ds.FlushCache()
     if progress_callback:
         progress_callback(0.88, "Building pyramid overviews for cleaned amplitude GeoTIFF...")
     try:
-        ov_levels = [2, 4, 8, 16]
-        out_amp_ds.BuildOverviews("NEAREST", ov_levels)
+        out_amp_ds.BuildOverviews("NEAREST", list(DEFAULT_OVERVIEW_LEVELS))
     except Exception as err:
         logger.warning("Failed to build overviews for amplitude: %s", err)
-    out_amp_ds.FlushCache()
+    safe_close_dataset(out_amp_ds, flush_global_cache=True, run_gc=False)
     out_amp_ds = None
 
     # 2. Output RFI Mask
@@ -469,14 +473,15 @@ def mitigate_rfi_slc(
         )
     except Exception as stat_err:
         logger.debug("Failed to set statistics for mask: %s", stat_err)
+    mask_band = None
     del mask_u8
 
     out_mask_ds.FlushCache()
     try:
-        out_mask_ds.BuildOverviews("NEAREST", [2, 4, 8, 16, 32])
+        out_mask_ds.BuildOverviews("NEAREST", list(DEFAULT_OVERVIEW_LEVELS))
     except Exception as err:
         logger.warning("Failed to build overviews for mask: %s", err)
-    out_mask_ds.FlushCache()
+    safe_close_dataset(out_mask_ds, flush_global_cache=True, run_gc=False)
     out_mask_ds = None
 
     # 3. Optional Output Cleaned Phase
@@ -509,20 +514,20 @@ def mitigate_rfi_slc(
                     )
                 except Exception as stat_err:
                     logger.debug("Failed to set statistics for phase band %d: %s", b, stat_err)
+                p_band = None
                 del pha_data
             out_pha_ds.FlushCache()
             try:
-                out_pha_ds.BuildOverviews("NEAREST", [2, 4, 8, 16, 32])
+                out_pha_ds.BuildOverviews("NEAREST", list(DEFAULT_OVERVIEW_LEVELS))
             except Exception as err:
                 logger.warning("Failed to build overviews for phase: %s", err)
-            out_pha_ds.FlushCache()
+            safe_close_dataset(out_pha_ds, flush_global_cache=True, run_gc=False)
             out_pha_ds = None
 
     del clean
-    gc.collect()
-
-
+    safe_close_dataset(src_amp_ds, flush_global_cache=False, run_gc=False)
     src_amp_ds = None
+    safe_close_dataset(src_pha_ds, flush_global_cache=True, run_gc=True)
     src_pha_ds = None
 
     flagged_ratio = float(mask.mean())

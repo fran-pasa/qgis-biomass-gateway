@@ -8,6 +8,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from .memory import DEFAULT_OVERVIEW_LEVELS
+
 
 class WarpMethod(str, Enum):
     """Supported GDAL georeferencing methods.
@@ -77,7 +79,7 @@ class WarpConfig:
     src_crs: str = "EPSG:4979"
     dst_crs: str = "EPSG:4326"
     nodata: float = -9999.0
-    resample_alg: str = "bilinear"
+    resample_alg: str = "nearest"
 
 
 @dataclass
@@ -153,9 +155,9 @@ class CalibrationConfig:
     """
     nodata: float = -9999.0
     to_db: bool = True
-    build_overviews: bool = False
+    build_overviews: bool = True
     overview_resampling: str = "NEAREST"
-    overview_levels: tuple[int, ...] = (2, 5, 10, 20)
+    overview_levels: tuple[int, ...] = DEFAULT_OVERVIEW_LEVELS
     compress: str = "DEFLATE"
 
 

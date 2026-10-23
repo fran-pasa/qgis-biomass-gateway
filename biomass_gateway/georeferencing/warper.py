@@ -8,8 +8,9 @@ import tempfile
 from osgeo import gdal
 
 from ..core.exceptions import WarpError
-from ..core.logger import get_logger, log_qgis_info
+from ..core.logger import get_logger, log_qgis_info, log_qgis_warning
 from ..core.models import BiomassProduct, WarpConfig, WarpMethod
+from ..core.memory import DEFAULT_OVERVIEW_LEVELS, safe_close_dataset
 
 from xml.sax.saxutils import escape
 import xml.etree.ElementTree as ET
@@ -121,6 +122,7 @@ def build_geolocation_vrt(
     band_count = ds.RasterCount
     first_band = ds.GetRasterBand(1)
     data_type_name = gdal.GetDataTypeName(first_band.DataType)
+    first_band = None # close dataset
 
     lut_str = str(lut_nc_path.resolve())
     x_dataset = f'NETCDF:"{lut_str}":/geometry/longitude'
@@ -172,6 +174,7 @@ def build_geolocation_vrt(
         color_interp_id = band_obj.GetColorInterpretation()
         color_interp_name = gdal.GetColorInterpretationName(color_interp_id)
         desc = (band_names[b - 1] if band_names and b <= len(band_names) else None) or band_obj.GetDescription() or f"Band {b}"
+        band_obj = None
 
         nodata_tag = f"\n            <NoDataValue>{nodata_val}</NoDataValue>" if nodata_val is not None else ""
         color_tag = f"\n            <ColorInterp>{color_interp_name}</ColorInterp>" if color_interp_name and color_interp_name != "Undefined" else ""
@@ -205,7 +208,12 @@ def build_geolocation_vrt(
 
     output_vrt_path.parent.mkdir(parents=True, exist_ok=True)
     output_vrt_path.write_text(vrt_content, encoding="utf-8")
+
+    # release & close datasets
+    del az_lut, rg_lut
+    safe_close_dataset(ds, flush_global_cache=True, run_gc=False)
     ds = None
+
     return output_vrt_path
 
 
@@ -288,6 +296,7 @@ def warp_raster(
                 band.SetNoDataValue(config.nodata)
             if band_names and idx <= len(band_names):
                 band.SetDescription(band_names[idx - 1])
+            band = None
 
         if output_format == "GTiff":
             try:
@@ -306,17 +315,12 @@ def warp_raster(
                         pass
                     return 1
 
-                try:
-                    ds.BuildOverviews("AVERAGE", [2, 4, 8, 16], _ov_cb)
-                except TypeError:
-                    try:
-                        ds.BuildOverviews("AVERAGE", [2, 4, 8, 16], callback=_ov_cb)
-                    except TypeError:
-                        ds.BuildOverviews("AVERAGE", [2, 4, 8, 16])
+                ds.BuildOverviews("NEAREST", list(DEFAULT_OVERVIEW_LEVELS), _ov_cb)
             except Exception as e:
                 logger.debug("Failed to build overviews: %s", e)
 
-        # save and close the file
+        # flush and release all C++ blocks accumulated during warping
+        safe_close_dataset(ds, flush_global_cache=True, run_gc=True)
         ds = None
 
         log_qgis_info(f"Warped raster created: {output_path.name}")

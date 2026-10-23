@@ -143,6 +143,7 @@ def read_lut_geometry(lut_nc_path: Path | str) -> LutData:
     gamma_lut = ds_gamma.ReadAsArray().astype(np.float64)
     if nodata_val is not None:
         gamma_lut[gamma_lut == nodata_val] = np.nan
+    band = None
     ds_gamma = None
 
     # 2. Open relativeAzimuthTimeRGC axis

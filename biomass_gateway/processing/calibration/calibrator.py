@@ -16,6 +16,7 @@ from osgeo import gdal
 from ...core.exceptions import CalibrationError
 from ...core.logger import get_logger
 from ...core.models import BiomassProduct, CalibrationConfig
+from ...core.memory import safe_close_dataset
 from .geometry import read_sar_image_geometry
 from .interpolator import interpolate_gamma_lut
 from .lut_reader import read_lut_geometry
@@ -214,6 +215,14 @@ def calibrate_to_gamma0(
 
             out_band.FlushCache()
 
+            # free the band arrays and handles, delete gamma_full since phase 2 and 3 of this algorithm
+            # don't need the LUT anymore
+            src_band = None
+            out_band = None
+            del amp, beta0, gamma0, valid, gamma0_lin
+
+        del gamma_full
+
         # -------------------------------------------------------------
         # Phase 2: Build pyramid overviews in linear power
         # -------------------------------------------------------------
@@ -262,8 +271,12 @@ def calibrate_to_gamma0(
                 ov_band.WriteArray(db_ov)
                 ov_band.SetNoDataValue(config.nodata)
                 ov_band.FlushCache()
+                ov_band = None
+                del lin_ov, db_ov, valid_ov
 
             out_band.FlushCache()
+            out_band = None
+            del lin_base, db_base, valid_base
 
     else:
         # Direct single-pass processing (NEAREST, GAUSS, or direct linear)
@@ -311,6 +324,11 @@ def calibrate_to_gamma0(
             out_band.SetMetadataItem("UNIT", unit)
 
             out_band.FlushCache()
+            src_band =  None
+            out_band = None
+            del amp, beta0, gamma0, valid, gamma0_out
+
+        del gamma_full
 
         if config.build_overviews:
             resampling = config.overview_resampling.upper()
@@ -322,9 +340,10 @@ def calibrate_to_gamma0(
             except Exception as err:
                 logger.warning("Failed to build overviews: %s", err)
 
-    out_ds.FlushCache()
-    out_ds = None
+    safe_close_dataset(src_ds, flush_global_cache=False, run_gc=False)
     src_ds = None
+    safe_close_dataset(out_ds, flush_global_cache=True, run_gc=True)
+    out_ds = None
 
     if progress_callback:
         progress_callback(1.0, "Calibration completed.")
