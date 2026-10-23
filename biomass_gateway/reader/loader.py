@@ -18,6 +18,7 @@ from ..core.exceptions import ProductReadError, WarpError
 from ..core.logger import get_logger, log_qgis_info, log_qgis_warning
 from ..core.models import BiomassProduct, ProductLevel, WarpConfig, WarpMethod
 from ..georeferencing.warper import create_warped_vrt
+from ..core.memory import ensure_raster_overviews, layer_resampling_guard
 
 logger = get_logger("reader.loader")
 
@@ -198,10 +199,16 @@ def load_biomass_product(
     if not amp_path or not Path(amp_path).is_file():
         raise ProductReadError(f"No valid measurement file found for product {product.product_id}")
 
+    # ensure .ovr pyramids exist before qgis opens the raster
+    ensure_raster_overviews(amp_path)
+
     amp_layer = QgsRasterLayer(str(amp_path), layer_title, "gdal")
     if not amp_layer.isValid():
         err_msg = amp_layer.error().summary() if amp_layer.error() else "Unknown GDAL error"
         raise ProductReadError(f"Failed to load raster layer {amp_path}: {err_msg}")
+
+    # force NN canvas resampling
+    layer_resampling_guard(amp_layer)
 
     # make polarimetric SAR composite (HH, HV, VV) if 3+ bands,
     # else single-band grayscale
@@ -230,8 +237,10 @@ def load_biomass_product(
                 phase_path = product.phase_file
                 phase_title = f"{product.product_id} [Phase]"
 
+            ensure_raster_overviews(phase_path)
             phase_layer = QgsRasterLayer(str(phase_path), phase_title, "gdal")
             if phase_layer.isValid():
+                layer_resampling_guard(phase_layer)
                 apply_sar_gray_styling(phase_layer, gray_band=1)
                 project.addMapLayer(phase_layer, False)
                 group.addLayer(phase_layer)
