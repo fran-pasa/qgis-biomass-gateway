@@ -155,7 +155,7 @@ class CalibrationConfig:
     """
     nodata: float = -9999.0
     to_db: bool = True
-    build_overviews: bool = False
+    build_overviews: bool = True
     overview_resampling: str = "NEAREST"
     overview_levels: tuple[int, ...] = DEFAULT_OVERVIEW_LEVELS
     compress: str = "DEFLATE"
