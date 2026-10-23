@@ -132,8 +132,8 @@ class BiomassDockWidget(QgsDockWidget):
         resample_layout.addWidget(QLabel("<b>Resampling method:</b>"))
         self.cmb_resample = QComboBox()
         self.cmb_resample.addItems([
-            "Bilinear",
             "Nearest Neighbour",
+            "Bilinear",
             "Cubic"
         ])
         self.cmb_resample.setCurrentIndex(0)
