@@ -12,6 +12,7 @@ from qgis.PyQt.QtWidgets import QAction
 
 from .ui.dock_widget import BiomassDockWidget
 from .processing.provider import BiomassProcessingProvider
+from .core.memory import configure_gdal_cache, safe_close_dataset
 
 
 class BiomassGatewayPlugin:
@@ -31,6 +32,9 @@ class BiomassGatewayPlugin:
         """
         Register the processing provider in QGIS
         """
+        # configure GDAL cache here to cover also headless processing usage of the plugin
+        configure_gdal_cache()
+
         registry = QgsApplication.processingRegistry()
         existing = registry.providerById("biomass_gateway")
         if existing:
@@ -60,8 +64,6 @@ class BiomassGatewayPlugin:
     def unload(self):
         """Called by QGIS when plugin is disabled or reloaded
         """
-        if self.provider:
-            QgsApplication.processingRegistry().removeProvider(self.provider)
         if self.action:
             self.iface.removePluginMenu("&Biomass Gateway", self.action)
             self.iface.removeToolBarIcon(self.action)
@@ -86,6 +88,9 @@ class BiomassGatewayPlugin:
                     registry.removeProvider(existing)
                 except Exception:
                     pass
+
+        # ensure that no leftover C++ blocks from previous runs/testing of the plugin stay locked in RAM
+        safe_close_dataset(None, flush_global_cache=True, run_gc=True)
 
 
     def run(self):
