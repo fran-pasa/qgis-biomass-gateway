@@ -191,6 +191,9 @@ class DecompositionType(str, Enum):
 
 class DecompositionScale(str, Enum):
     """Radiometric scale for decompositions channels
+
+    This class mirrors the EScale from the BioPal library
+    (https://github.com/BioPAL/data_readers/blob/main/bioqlk.py)
     """
     LINEAR_AMPLITUDE = "linear_amplitude"
     LINEAR_POWER = "linear_power"
@@ -199,6 +202,9 @@ class DecompositionScale(str, Enum):
 
 class StretchMethod(str, Enum):
     """Contrast stretching method for 8-bit RGB rendering
+
+    This class mirrors EScalingMethod from the BioPal library
+    (https://github.com/BioPAL/data_readers/blob/main/bioqlk.py)
     """
     QUANTILE = "quantile"
     MEAN = "mean"
@@ -207,6 +213,9 @@ class StretchMethod(str, Enum):
 @dataclass(frozen=True)
 class DecompositionConfig:
     """Configuration options for polarimetric decomposition
+
+    Default values for phase imbalance correction mirror the BioPal library
+    (https://github.com/BioPAL/data_readers/blob/main/bioqlk.py)
     """
     representation: DecompositionType = DecompositionType.PAULI
     scale: DecompositionScale = DecompositionScale.LINEAR_AMPLITUDE
