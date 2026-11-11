@@ -220,6 +220,30 @@ class TestDecompositionDriverAndAlgorithm:
         assert written_arrays[-1].dtype == np.uint8
         assert np.all(written_arrays[-1] == 255)  # All valid pixels have Alpha == 255
 
+        # Also verify 3-band symmetrized L1C (HH, XX, VV) works cleanly
+        written_arrays.clear()
+        amp_3bands = amp_bands[:3]
+        pha_3bands = pha_bands[:3]
+
+        def _make_3band_ds(bands_data: list[np.ndarray]) -> MagicMock:
+            ds = _make_src_ds(bands_data)
+            ds.RasterCount = 3
+            return ds
+
+        with (
+            patch("biomass_gateway.processing.polarimetry.decompositions.gdal.Open") as mock_open,
+            patch("biomass_gateway.processing.polarimetry.decompositions.gdal.GetDriverByName", return_value=driver_mock),
+        ):
+            mock_open.side_effect = [_make_3band_ds(amp_3bands), _make_3band_ds(pha_3bands)]
+            rgb_3b, _ = run_polarimetric_decomposition(
+                abs_raster_path=abs_file,
+                phase_raster_path=pha_file,
+                output_rgb_path=out_rgb,
+                config=DecompositionConfig(representation=DecompositionType.PAULI, smooth_window=None),
+            )
+        assert rgb_3b == out_rgb.resolve()
+        assert len(written_arrays) == 4
+
     def test_algorithm_metadata_and_parameters(self) -> None:
         alg = PolarimetricDecompositionAlgorithm()
         assert alg.name() == "polarimetric_decomposition"

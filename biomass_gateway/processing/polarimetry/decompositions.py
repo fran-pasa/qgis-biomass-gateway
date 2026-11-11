@@ -493,9 +493,9 @@ def run_polarimetric_decomposition(
         n_bands = abs_ds.RasterCount
         if n_bands != phase_ds.RasterCount:
             raise DecompositionError(f"Band count mismatch between amplitude ({n_bands} and phase ({phase_ds.RasterCount})).")
-        if n_bands != 4:
+        if n_bands not in (3, 4):
             raise DecompositionError(
-                f"Polarimetric decomposition requires 4 bands, got {n_bands}."
+                f"Polarimetric decomposition requires 3 (HH, XX, VV) or 4 (HH, HV, VH, VV) bands, got {n_bands}."
             )
         if (abs_ds.RasterXSize != phase_ds.RasterXSize) or (abs_ds.RasterYSize != phase_ds.RasterYSize):
             raise DecompositionError("Dimension mismatch between amplitude and phase raster")
@@ -522,15 +522,20 @@ def run_polarimetric_decomposition(
             if pha_nd is not None:
                 band_valid &= pha != pha_nd
 
-            # a pixel is valid only if it is valid across all 4 polarizations
+            # a pixel is valid only if it is valid across all polarizations
             valid_mask &= band_valid
             ch = np.where(band_valid, amp * np.exp(1j * pha), np.nan + 1j * np.nan).astype(np.complex64)
             channels.append(ch)
             ab = None
             pb = None
 
-        # unpack in BIOMASS band order (1=HH, 2=HV, 3=VH, 4=VV)
-        hh, hv, vh, vv = channels[0], channels[1], channels[2], channels[3]
+        # unpack in BIOMASS band order:
+        # - 4 bands (L1A/L1B/L1C): 1=HH, 2=HV, 3=VH, 4=VV
+        # - 3 bands (symmetrized L1C): 1=HH, 2=XX, 3=VV (with VH = HV = XX per BPS L1 PFD Sec. 6.3.6)
+        if n_bands == 4:
+            hh, hv, vh, vv = channels[0], channels[1], channels[2], channels[3]
+        else:
+            hh, hv, vh, vv = channels[0], channels[1], channels[1], channels[2]
 
         if config.fix_ical_phase:
             if progress_callback:
