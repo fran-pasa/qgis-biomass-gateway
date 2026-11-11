@@ -40,7 +40,7 @@ def compute_pauli(
 
     # red = double-bounce scattering
     # green = volume scattering
-    # green = surface scattering
+    # blue = surface scattering
     red = inv_sqrt2 * np.abs(hh - vv).astype(np.float32)
     green = inv_sqrt2 * np.abs(hv + vh).astype(np.float32)
     blue = inv_sqrt2 * np.abs(hh + vv).astype(np.float32)
@@ -159,22 +159,41 @@ def smooth_nan(arr: np.ndarray, window_size: tuple[int, int] | None) -> np.ndarr
 def _turbo_colormap(x: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Helper to evaluate Google's 'turbo' colormap on normalized array x in [0, 1].
     This helper is useful to avoid using matplotlib turbo, as matplotlib may not be installed in all
-    QGIS setups. """
+    QGIS setups.
+    """
     xc = np.clip(x, 0.0, 1.0).astype(np.float32)
+
     r = (
-            0.13572138
-            + xc * (4.61539260 + xc * (-42.66032258 + xc * (132.13108234 + xc * (-152.94239396 + xc *
-                                                                                 59.28637943))))
+        0.13572138
+        + xc * (
+            4.61539260
+            + xc * (
+                -42.66032258
+                + xc * (132.13108234 + xc * (-152.94239396 + xc * 59.28637943))
+            )
+        )
     )
     g = (
-            0.09140261
-            + xc * (2.19418839 + xc * (4.84296658 + xc * (-14.18503333 + xc * (4.27729857 + xc * 2.82956604))))
+        0.09140261
+        + xc * (
+            2.19418839
+            + xc * (
+                4.84296658
+                + xc * (-14.18503333 + xc * (4.27729857 + xc * 2.82956604))
+            )
+        )
     )
     b = (
-            0.10667330
-            + xc * (12.64194608 + xc * (-60.58204836 + xc * (110.36276771 + xc * (-89.90310912 + xc *
-                                                                                  27.34824973))))
+        0.10667330
+        + xc * (
+            12.64194608
+            + xc * (
+                -60.58204836
+                + xc * (110.36276771 + xc * (-89.90310912 + xc * 27.34824973))
+            )
+        )
     )
+
     return (
         np.clip(r, 0.0, 1.0).astype(np.float32),
         np.clip(g, 0.0, 1.0).astype(np.float32),
@@ -193,6 +212,7 @@ def hsv_to_rgb_uint8(
     hue_safe = np.where(valid, hue, 0.0)
     val_safe = np.where(valid, np.clip(value, 0.0, 1.0), 0.0)
 
+    # map scattering angle (hue) onto the turbo color ramp and modulate brightness by span (value)
     r_norm, g_norm, b_norm = _turbo_colormap(hue_safe)
 
     r_u8 = np.where(valid, np.clip(r_norm * val_safe * 255.0, 0.0, 255.0), 0.0).astype(np.uint8)
@@ -488,13 +508,14 @@ def run_polarimetric_decomposition(
         channels: list[np.ndarray] = []
         valid_mask = np.ones((abs_ds.RasterYSize, abs_ds.RasterXSize), dtype=bool)
 
-        # reconstroctuion of the complex SLC channels
+        # reconstruct complex SLC channels S = A * exp(j * phi) from amplitude and phase bands
         for b_idx in range(1, n_bands + 1):
             ab = abs_ds.GetRasterBand(b_idx)
             pb = phase_ds.GetRasterBand(b_idx)
             amp = ab.ReadAsArray().astype(np.float32)
             pha = pb.ReadAsArray().astype(np.float32)
 
+            # mask out non-finite pixels, zero-amplitude borders, and explicit GDAL nodata values
             amp_nd = ab.GetNoDataValue()
             pha_nd = pb.GetNoDataValue()
             band_valid = np.isfinite(amp) & np.isfinite(pha) & (amp > 0.0)
@@ -503,12 +524,14 @@ def run_polarimetric_decomposition(
             if pha_nd is not None:
                 band_valid &= pha != pha_nd
 
+            # a pixel is valid only if it is valid across all 4 polarizations
             valid_mask &= band_valid
             ch = np.where(band_valid, amp * np.exp(1j * pha), np.nan + 1j * np.nan).astype(np.complex64)
             channels.append(ch)
             ab = None
             pb = None
 
+        # unpack in BIOMASS band order (1=HH, 2=HV, 3=VH, 4=VV)
         hh, hv, vh, vv = channels[0], channels[1], channels[2], channels[3]
 
         if config.fix_ical_phase:
@@ -538,8 +561,10 @@ def run_polarimetric_decomposition(
         else:
             raise DecompositionError(f"Unsupported representation: {config.representation}")
 
+        # free complex64 channels immediately to halve peak RAM before boxcar smoothing
         del channels, hh, hv, vh, vv
 
+        # smooth float channels prior to both Float32 export and 8-bit stretching (matches bioqlk.make_rgb)
         if config.smooth_window and (config.smooth_window[0] > 1 or config.smooth_window[1] > 1):
             if progress_callback:
                 progress_callback(0.65, f"Applying {config.smooth_window[0]}x{config.smooth_window[1]} boxcar filter...")
