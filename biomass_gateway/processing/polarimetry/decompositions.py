@@ -234,8 +234,8 @@ def scale_channel_to_uint8(
         return np.zeros(channel.shape, dtype=np.uint8)
 
     clipped = np.clip(np.where(valid, channel, vmin), vmin, vmax)
-    scaled = (clipped - vmin) / (vmax - vmin) * 255.0
-    return np.where(valid, np.clip(scaled, 0.0, 255.0), 0.0).astype(np.uint8)
+    scaled = 1.0 + (clipped - vmin) / (vmax - vmin) * 254.0
+    return np.where(valid, np.clip(scaled, 1.0, 255.0), 0.0).astype(np.uint8)
 
 
 def stretch_pauli_to_rgb_uint8(
@@ -264,7 +264,7 @@ def stretch_pauli_to_rgb_uint8(
 
         if stretch_method == StretchMethod.QUANTILE:
             q = float(np.clip(quantile_threshold, 0.0, 0.49))
-            vmin = float(np.quantile(valid, q))
+            vmin = float(np.quantile(valid, q)) if scale == DecompositionScale.DB else 0.0
             vmax = float(np.quantile(valid, 1.0 - q))
         elif stretch_method == StretchMethod.MEAN:
             vmin = 0.0
@@ -376,12 +376,10 @@ def _write_uint8_rgb(
         band.WriteArray(arr)
         band = None
 
-    # compute the Alpha band: 255 (opaque) where the pixel was valid and
-    # at least 1 RGB channel is non-0, and 0 (transparent) on NoData borders or all-zero
-    # pixels (matching bioqlk.save_rgba_geotiff
+    # compute the Alpha band: 255 (opaque) where the pixel was valid,
+    # and 0 (transparent) on NoData borders
     if config.add_alpha:
-        non_black = (r_u8 > 0) | (g_u8 > 0) | (b_u8 > 0)
-        alpha = np.where(valid_mask & non_black, 255, 0).astype(np.uint8)
+        alpha = np.where(valid_mask, 255, 0).astype(np.uint8)
         alpha_band = out_ds.GetRasterBand(4)
         alpha_band.SetColorInterpretation(gdal.GCI_AlphaBand)
         alpha_band.SetDescription("Alpha")
