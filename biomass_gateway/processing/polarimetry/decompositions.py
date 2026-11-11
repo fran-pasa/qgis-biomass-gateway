@@ -255,3 +255,333 @@ def stretch_pauli_to_rgb_uint8(
         out_channels.append(scale_channel_to_uint8(ch, vmin, vmax))
 
     return out_channels[0], out_channels[1], out_channels[2]
+
+
+def _copy_metadata(src_ds: gdal.Dataset, dst_ds: gdal.Dataset,
+                   lut_file: Path | None = None, annotation_file: Path | None = None,
+                   product_folder: Path | None = None) -> None:
+    """Copy GCPs, projection, geotransform and other BIOMASS LUT metadata
+    from src_ds to dst_ds
+    """
+    # copy the GCPs and their CRS from the slant-range input to the output
+    # this way TPS / polynomial warping wrorks on the decomposition output as well.
+    gcps = src_ds.GetGCPs()
+    if gcps:
+        dst_ds.SetGCPs(gcps, src_ds.GetGCPProjection())
+
+    # copy any existing CRS projection and affine GeoTransform
+    proj = src_ds.GetProjection()
+    if proj:
+        dst_ds.SetProjection(proj)
+
+    gt = src_ds.GetGeoTransform(can_return_null=True)
+    if gt:
+        dst_ds.SetGeoTransform(gt)
+
+    # forwards these tags to the new output even when input already has them already
+    src_meta = src_ds.GetMetadata() or {}
+    for key in ("BIOMASS_LUT_FILE", "BIOMASS_ANNOTATION_FILE", "BIOMASS_PRODUCT_FOLDER"):
+        if key in src_meta:
+            dst_ds.SetMetadataItem(key, src_meta[key])
+
+    if lut_file is not None:
+        dst_ds.SetMetadataItem("BIOMASS_LUT_FILE", str(Path(lut_file).resolve()))
+    if annotation_file is not None:
+        dst_ds.SetMetadataItem("BIOMASS_ANNOTATION_FILE", str(Path(annotation_file).resolve()))
+    if product_folder is not None:
+        dst_ds.SetMetadataItem("BIOMASS_PRODUCT_FOLDER", str(Path(product_folder).resolve()))
+
+
+def _write_uint8_rgb(
+        output_path: Path,
+        src_ds: gdal.Dataset,
+        r_u8: np.ndarray,
+        g_u8: np.ndarray,
+        b_u8: np.ndarray,
+        valid_mask: np.ndarray,
+        config: DecompositionConfig,
+        lut_file: Path | None = None,
+        annotation_file: Path | None = None,
+        product_folder: Path | None = None,
+) -> Path:
+    """Helper to write 8bit RGB or RGBA geotiff
+    """
+    output_path = Path(output_path).resolve()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    row, cols = r_u8.shape
+
+    # create 4 band (RGBA) when transparency is enabled, RBG otherwise
+    band_count = 4 if config.add_alpha else 3
+
+    driver = gdal.GetDriverByName("GTiff")
+    if driver is None:
+        raise DecompositionError("GDAL GTiff driver not found.")
+
+    # tell qgis to render the file as a true-color RGB/RGBA image
+    # rather than a single band raster
+    creation_options = [
+        "TILED=YES",
+        f"COMPRESS={config.compress}",
+        "BIGTIFF=IF_SAFER",
+        "NUM_THREADS=ALL_CPUS",
+        "PHOTOMETRIC=RGB",
+    ]
+    if config.add_alpha:
+        creation_options.append("ALPHA=YES")
+
+    out_ds = driver.Create(
+        str(output_path), cols, row, band_count, gdal.GDT_Byte, creation_options
+    )
+    if out_ds is None:
+        raise DecompositionError(f"Failed to create 8bit RGB at {output_path}.")
+
+    # copy GCPs, CRS and LUT file / Annotation file tags
+    # this way the output of this module can be passed to 'Warp product' if needed.
+    _copy_metadata(src_ds, out_ds, lut_file, annotation_file, product_folder)
+    out_ds.SetMetadataItem("DECOMPOSITION", config.representation.value.upper())
+
+    # write bands and assign GDAL color interpretation
+    rgb_spec = [
+        (1, r_u8, gdal.GCI_RedBand, "Red"),
+        (2, g_u8, gdal.GCI_GreenBand, "Green"),
+        (3, b_u8, gdal.GCI_BlueBand, "Blue"),
+    ]
+    for b_idx, arr, color_interp, desc in rgb_spec:
+        band = out_ds.GetRasterBand(b_idx)
+        band.SetColorInterpretation(color_interp)
+        band.SetDescription(desc)
+        if not config.add_alpha:
+            band.SetNoDataValue(0)
+        band.WriteArray(arr)
+        band = None
+
+    # compute the Alpha band: 255 (opaque) where the pixel was valid and
+    # at least 1 RGB channel is non-0, and 0 (transparent) on NoData borders or all-zero
+    # pixels (matching bioqlk.save_rgba_geotiff
+    if config.add_alpha:
+        non_black = (r_u8 > 0) | (g_u8 > 0) | (b_u8 > 0)
+        alpha = np.where(valid_mask & non_black, 255, 0).astype(np.uint8)
+        alpha_band = out_ds.GetRasterBand(4)
+        alpha_band.SetColorInterpretation(gdal.GCI_AlphaBand)
+        alpha_band.SetDescription("Alpha")
+        alpha_band.WriteArray(alpha)
+        alpha_band = None
+
+    # build pyramids
+    if config.build_overviews:
+        out_ds.FlushCache()
+        out_ds.BuildOverviews(config.overview_resampling, list(config.overview_levels))
+
+    safe_close_dataset(out_ds, flush_global_cache=True, run_gc=False)
+    out_ds = None
+
+    return output_path
+
+
+def _write_float32(
+        output_path: Path,
+        src_ds: gdal.Dataset,
+        ch1: np.ndarray,
+        ch2: np.ndarray,
+        ch3: np.ndarray,
+        band_descriptions: tuple[str, str, str],
+        config: DecompositionConfig,
+        lut_file: Path | None = None,
+        annotation_file: Path | None = None,
+        product_folder: Path | None = None,
+) -> Path:
+    """Write 3-band Float32 geotiff
+    """
+    output_path = Path(output_path).resolve()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    rows, cols = ch1.shape
+    driver = gdal.GetDriverByName("GTiff")
+    if driver is None:
+        raise DecompositionError("GDAL GTiff driver not found.")
+
+    creation_options = [
+        "TILED=YES",
+        f"COMPRESS={config.compress}",
+        "BIGTIFF=IF_SAFER",
+        "NUM_THREADS=ALL_CPUS",
+    ]
+    out_ds = driver.Create(
+        str(output_path), cols, rows, 3, gdal.GDT_Float32, creation_options
+    )
+    if out_ds is None:
+        raise DecompositionError(f"Failed to create float32 geotiff at {output_path}.")
+
+    _copy_metadata(src_ds, out_ds, lut_file, annotation_file, product_folder)
+    out_ds.SetMetadataItem("DECOMPOSITION", config.representation.value.upper())
+    out_ds.SetMetadataItem("SCALE", config.scale.value)
+
+    for b_idx, (arr, desc) in enumerate(zip((ch1, ch2, ch3),
+                                            band_descriptions), start=1):
+        band = out_ds.GetRasterBand(b_idx)
+        band.SetDescription(desc)
+        band.SetNoDataValue(config.nodata)
+        out_arr = np.where(np.isfinite(arr), arr, config.nodata).astype(np.float32)
+        band.WriteArray(out_arr)
+        band = None
+
+    if config.build_overviews:
+        out_ds.FlushCache()
+        out_ds.BuildOverviews(config.overview_resampling, list(config.overview_levels))
+
+    safe_close_dataset(out_ds, flush_global_cache=True, run_gc=False)
+    out_ds = None
+
+    return output_path
+
+
+def run_polarimetric_decomposition(
+        abs_raster_path: Path | str,
+        phase_raster_path: Path | str,
+        output_rgb_path: Path | None,
+        output_float_path: Path | None = None,
+        config: DecompositionConfig | None = None,
+        lut_file: Path | None = None,
+        annotation_file: Path | None = None,
+        product_folder: Path | None = None,
+        progress_callback: Callable[[float, str], None] | None = None,
+) -> tuple[Path, Path | None]:
+    """Run Pauli or HSV decomposition on BIOMASS complex SLC
+    (amp + phase) rasters
+    """
+    # path & config setup
+    config = config or DecompositionConfig()
+    abs_path = Path(abs_raster_path).resolve()
+    phase_path = Path(phase_raster_path).resolve()
+    out_rgb = Path(output_rgb_path).resolve()
+    out_float = Path(output_float_path).resolve() if output_float_path else None
+
+    if not abs_path.is_file():
+        raise DecompositionError(f"Amplitude raster not found: {abs_path}.")
+    if not phase_path.is_file():
+        raise DecompositionError(f"Phase raster not found: {phase_path}.")
+
+    gdal.UseExceptions() #tells GDAL to raise Python errors instead of throwing silent error codes
+
+    # open both files in read only mode
+    abs_ds = gdal.Open(str(abs_path), gdal.GA_ReadOnly)
+    phase_ds = gdal.Open(str(phase_path), gdal.GA_ReadOnly)
+    if abs_ds is None or phase_ds is None:
+        raise DecompositionError("Failed to open input amplitude or phase raster with GDAL.")
+
+    try:
+        # verify number of bands and the raster size is the same across amp and phase files
+        n_bands = abs_ds.RasterCount
+        if n_bands != phase_ds.RasterCount:
+            raise DecompositionError(f"Band count mismatch between amplitude ({n_bands} and phase ({phase_ds.RasterCount})).")
+        if n_bands != 4:
+            raise DecompositionError(
+                f"Polarimetric decomposition requires 4 bands, got {n_bands}."
+            )
+        if (abs_ds.RasterXSize != phase_ds.RasterXSize) or (abs_ds.RasterYSize != phase_ds.RasterYSize):
+            raise DecompositionError("Dimension mismatch between amplitude and phase raster")
+
+        if progress_callback:
+            progress_callback(0.10, f"Reading {n_bands} complex SLC channels...")
+
+        channels: list[np.ndarray] = []
+        valid_mask = np.ones((abs_ds.RasterYSize, abs_ds.RasterXSize), dtype=bool)
+
+        # reconstroctuion of the complex SLC channels
+        for b_idx in range(1, n_bands + 1):
+            ab = abs_ds.GetRasterBand(b_idx)
+            pb = phase_ds.GetRasterBand(b_idx)
+            amp = ab.ReadAsArray().astype(np.float32)
+            pha = pb.ReadAsArray().astype(np.float32)
+
+            amp_nd = ab.GetNoDataValue()
+            pha_nd = pb.GetNoDataValue()
+            band_valid = np.isfinite(amp) & np.isfinite(pha) & (amp > 0.0)
+            if amp_nd is not None:
+                band_valid &= amp != amp_nd
+            if pha_nd is not None:
+                band_valid &= pha != pha_nd
+
+            valid_mask &= band_valid
+            ch = np.where(band_valid, amp * np.exp(1j * pha), np.nan + 1j * np.nan).astype(np.complex64)
+            channels.append(ch)
+            ab = None
+            pb = None
+
+        hh, hv, vh, vv = channels[0], channels[1], channels[2], channels[3]
+
+        if config.fix_ical_phase:
+            if progress_callback:
+                progress_callback(0.30, "Applying iCal phase offset corrections...")
+            hh, hv, vh, vv = apply_ical_phase_correction(hh, hv, vh, vv,
+                                                         pc_hh=config.pc_hh,
+                                                         pc_hv=config.pc_hv,
+                                                         pc_vh=config.pc_vh,
+                                                         pc_vv=config.pc_vv)
+
+        if progress_callback:
+            progress_callback(0.45, f"Computing {config.representation.value.upper()} decomposition...")
+
+        if config.representation == DecompositionType.PAULI:
+            ch1, ch2, ch3 = compute_pauli(hh, hv, vh, vv,
+                                          scale=config.scale)
+            float_desc = (
+                "Pauli_Red (|HH-VV|/sqrt(2))",
+                "Pauli_Green (|HV+VH|/sqrt(2))",
+                "Pauli_Blue (|HH+VV|/sqrt(2))",
+            )
+        elif config.representation == DecompositionType.HSV:
+            ch1, ch2, ch3 = compute_hsv(hh, hv, vh, vv,
+                                        kscale=config.cscale)
+            float_desc = ("HSV_Hue (Alpha)", "HSV_Saturation", "HSV_Value (Span)")
+        else:
+            raise DecompositionError(f"Unsupported representation: {config.representation}")
+
+        del channels, hh, hv, vh, vv
+
+        if config.smooth_window and (config.smooth_window[0] > 1 or config.smooth_window[1] > 1):
+            if progress_callback:
+                progress_callback(0.65, f"Applying {config.smooth_window[0]}x{config.smooth_window[1]} boxcar filter...")
+            ch1 = smooth_nan(ch1, config.smooth_window)
+            ch2 = smooth_nan(ch2, config.smooth_window)
+            ch3 = smooth_nan(ch3, config.smooth_window)
+
+        if out_float is not None:
+            if progress_callback:
+                progress_callback(0.75, f"Writing unscaled Float32 GeoTiff: {out_float.name}...")
+            _write_float32(
+                out_float, abs_ds, ch1, ch2, ch3, float_desc, config,
+                lut_file, annotation_file, product_folder
+            )
+
+        if progress_callback:
+            progress_callback(0.85, f"Writing 8bit RGB: {out_rgb.name}...")
+
+        if config.representation == DecompositionType.PAULI:
+            r_u8, g_u8, b_u8 = stretch_pauli_to_rgb_uint8(
+                ch1, ch2, ch3,
+                stretch_method=config.stretch_method,
+                scale=config.scale,
+                quantile_threshold=config.quantile_threshold,
+                cscale=config.cscale
+            )
+        else:
+            r_u8, g_u8, b_u8 = hsv_to_rgb_uint8(ch1, ch2, ch3)
+
+        _write_uint8_rgb(
+            out_rgb, abs_ds, r_u8, g_u8, b_u8, valid_mask, config,
+            lut_file, annotation_file, product_folder
+        )
+
+        if progress_callback:
+            progress_callback(1.0, "Polarimetric decomposition complete.")
+
+        return out_rgb, out_float
+
+    finally:
+        # flush GDAL global cache, run python garbace collection so files are never locked on disk
+        safe_close_dataset(abs_ds, flush_global_cache=False, run_gc=False)
+        safe_close_dataset(phase_ds, flush_global_cache=True, run_gc=True)
+        abs_ds = None
+        phase_ds = None
