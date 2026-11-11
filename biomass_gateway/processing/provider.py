@@ -11,6 +11,7 @@ from .algorithms.calibrate_algorithm import CalibrateGamma0Algorithm
 from .algorithms.mosaic_algorithm import MosaicBiomassAlgorithm
 from .algorithms.rfi_algorithm import RfiMitigationAlgorithm
 from .algorithms.warp_algorithm import WarpBiomassAlgorithm
+from .algorithms.decomposition_algorithm import PolarimetricDecompositionAlgorithm
 
 
 class BiomassProcessingProvider(QgsProcessingProvider):
@@ -24,8 +25,7 @@ class BiomassProcessingProvider(QgsProcessingProvider):
         self.addAlgorithm(CalibrateGamma0Algorithm())
         self.addAlgorithm(MosaicBiomassAlgorithm())
         self.addAlgorithm(RfiMitigationAlgorithm())
-
-
+        self.addAlgorithm(PolarimetricDecompositionAlgorithm())
         # contributors can register their algorithms here:
         # self.addAlgorithm(YourAlgorithm())
 
