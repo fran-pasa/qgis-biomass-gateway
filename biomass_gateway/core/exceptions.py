@@ -40,3 +40,6 @@ class CalibrationError(BiomassGatewayError):
 class RfiMitigationError(BiomassGatewayError):
     """Raised when RFI mitigation fails."""
 
+
+class DecompositionError(BiomassGatewayError):
+    """Raised when polarimetric decomposition fails"""

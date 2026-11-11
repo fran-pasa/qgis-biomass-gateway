@@ -180,3 +180,58 @@ class SarImageGeometry:
     n_lines: int
     n_samples: int
     projection: str
+
+
+class DecompositionType(str, Enum):
+    """Support polarimetric decompositions
+    """
+    PAULI = "pauli"
+    HSV = "hsv"
+
+
+class DecompositionScale(str, Enum):
+    """Radiometric scale for decompositions channels
+
+    This class mirrors the EScale from the BioPal library
+    (https://github.com/BioPAL/data_readers/blob/main/bioqlk.py)
+    """
+    LINEAR_AMPLITUDE = "linear_amplitude"
+    LINEAR_POWER = "linear_power"
+    DB = "db"
+
+
+class StretchMethod(str, Enum):
+    """Contrast stretching method for 8-bit RGB rendering
+
+    This class mirrors EScalingMethod from the BioPal library
+    (https://github.com/BioPAL/data_readers/blob/main/bioqlk.py)
+    """
+    QUANTILE = "quantile"
+    MEAN = "mean"
+
+
+@dataclass(frozen=True)
+class DecompositionConfig:
+    """Configuration options for polarimetric decomposition
+
+    Default values for phase imbalance correction mirror the BioPal library
+    (https://github.com/BioPAL/data_readers/blob/main/bioqlk.py)
+    """
+    representation: DecompositionType = DecompositionType.PAULI
+    scale: DecompositionScale = DecompositionScale.LINEAR_AMPLITUDE
+    stretch_method: StretchMethod = StretchMethod.QUANTILE
+    quantile_threshold: float = 0.01
+    cscale: float = 2.5
+    smooth_window: tuple[int, int] = (15, 3)
+    add_alpha: bool = True
+    fix_ical_phase: bool = False
+    pc_hh: float = -0.4145157
+    pc_hv: float = 1.98025057
+    pc_vh: float = -1.56556034
+    pc_vv: float = 0.0
+    nodata: float = -9999.0
+    build_overviews: bool = True
+    overview_resampling: str = "NEAREST"
+    overview_levels: tuple[int, ...] = DEFAULT_OVERVIEW_LEVELS
+    compress: str = "DEFLATE"
+
